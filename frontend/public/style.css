@@ -318,10 +318,55 @@ input[type="text"] {
   color: #c9d1d9;
 }
 
-#ingest-form {
+#ingest-form,
+#generate-form {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+#generate-form textarea {
+  background: #0b0f14;
+  color: #e6edf3;
+  border: 1px solid #2b3a4d;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-family: inherit;
+  font-size: 13px;
+  resize: vertical;
+  min-height: 60px;
+}
+
+.event {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  color: #c9d1d9;
+  padding: 4px 0;
+  border-bottom: 1px dashed #1f2a36;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.event.kind-error {
+  color: #ff8a80;
+}
+
+.event.kind-done {
+  color: #6ddf8a;
+}
+
+.event.kind-tests_failed,
+.event.kind-compile_error {
+  color: #ffb88c;
+}
+
+.event .download {
+  color: #6db3ff;
+  text-decoration: none;
+}
+
+.event .download:hover {
+  text-decoration: underline;
 }
 
 ul {

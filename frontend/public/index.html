@@ -45,7 +45,37 @@
         </div>
 
         <div class="drawer-section">
-          <h2>Ingestion</h2>
+          <h2>Générer un projet</h2>
+          <form id="generate-form">
+            <label class="muted" for="generate-project-id">Project id</label>
+            <input
+              type="text"
+              id="generate-project-id"
+              placeholder="ex. tasks-cli"
+              required
+            />
+            <label class="muted" for="generate-goal">Objectif</label>
+            <textarea
+              id="generate-goal"
+              rows="3"
+              placeholder="Ex. PWA de to-do list avec auth Google + SQLite côté serveur."
+              required
+            ></textarea>
+            <label class="muted" for="generate-iterations">Itérations max</label>
+            <input
+              type="number"
+              id="generate-iterations"
+              min="1"
+              max="10"
+              value="4"
+            />
+            <button type="submit" id="generate-submit">Lancer</button>
+            <p id="generate-status" class="muted"></p>
+          </form>
+        </div>
+
+        <div class="drawer-section">
+          <h2>Ingérer un projet</h2>
           <form id="ingest-form">
             <label class="muted" for="ingest-project-id">Project id</label>
             <input

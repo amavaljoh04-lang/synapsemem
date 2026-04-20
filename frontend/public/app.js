@@ -515,8 +515,113 @@ function bindKeyboardTracking() {
   update();
 }
 
+// ---- Project generation loop (streams NDJSON) -------------------------
+function bindGenerateForm() {
+  const form = document.getElementById("generate-form");
+  if (!form) return;
+  const pidInput = document.getElementById("generate-project-id");
+  const goalInput = document.getElementById("generate-goal");
+  const iterInput = document.getElementById("generate-iterations");
+  const statusEl = document.getElementById("generate-status");
+  const submitBtn = document.getElementById("generate-submit");
+
+  const setGenStatus = (msg, isError = false) => {
+    statusEl.textContent = msg;
+    statusEl.style.color = isError ? "#ff8a80" : "#7b8ba0";
+  };
+
+  const appendEvent = (evt) => {
+    const box = document.getElementById("messages");
+    const div = document.createElement("div");
+    div.className = `event kind-${evt.type}`;
+    if (evt.type === "done" && evt.download_url) {
+      const link = document.createElement("a");
+      link.className = "download";
+      link.href = evt.download_url;
+      link.textContent = `Télécharger le projet (zip)`;
+      link.setAttribute("download", "");
+      div.textContent = `[generate] terminé — `;
+      div.appendChild(link);
+    } else {
+      div.textContent = `[generate] ${JSON.stringify(evt)}`;
+    }
+    box.appendChild(div);
+    box.scrollTop = box.scrollHeight;
+  };
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const projectId = pidInput.value.trim();
+    const goal = goalInput.value.trim();
+    const maxIterations = Number(iterInput.value) || 4;
+    if (!projectId || goal.length < 4) {
+      setGenStatus("Renseigne un project id et un objectif (≥ 4 car.).", true);
+      return;
+    }
+    const model = document.getElementById("model").value || undefined;
+    submitBtn.disabled = true;
+    setGenStatus(`Lancement sur ${projectId}…`);
+    appendMessage(
+      "user",
+      `[génération de projet] ${goal}`,
+      `project=${projectId}`,
+    );
+
+    try {
+      const r = await fetch(
+        `/projects/${encodeURIComponent(projectId)}/generate`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            goal,
+            model,
+            max_iterations: maxIterations,
+          }),
+        },
+      );
+      if (!r.ok) {
+        const text = await r.text();
+        setGenStatus(`HTTP ${r.status}: ${text.slice(0, 200)}`, true);
+        return;
+      }
+      const reader = r.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        let idx;
+        while ((idx = buf.indexOf("\n")) !== -1) {
+          const line = buf.slice(0, idx);
+          buf = buf.slice(idx + 1);
+          if (!line.trim()) continue;
+          try {
+            const evt = JSON.parse(line);
+            appendEvent(evt);
+            if (evt.type === "done") {
+              setGenStatus("Terminé. Projet téléchargeable.");
+              graphDirty = true;
+              await refreshProjects();
+            }
+            if (evt.type === "error") {
+              setGenStatus(`Erreur: ${evt.detail}`, true);
+            }
+          } catch {}
+        }
+      }
+    } catch (err) {
+      setGenStatus(`error: ${err.message}`, true);
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
+}
+
 bindChatForm();
 bindIngestForm();
+bindGenerateForm();
 bindDrawer();
 bindKeyboardTracking();
 refreshModels();
