@@ -408,11 +408,15 @@ async def generate_project(
                 continue
             full.parent.mkdir(parents=True, exist_ok=True)
             full.write_text(pf.content, encoding="utf-8")
+            # Only treat ``.py`` files as Python so the AST extractor is
+            # never handed shell scripts, Markdown, etc.
+            language = "python" if pf.path.endswith(".py") else "other"
             report = await memory.ingest_file(
                 session,
                 project_id=project_id,
                 path=pf.path,
                 content=pf.content,
+                language=language,
             )
             ingest_reports.append(
                 {

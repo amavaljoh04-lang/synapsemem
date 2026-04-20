@@ -17,7 +17,9 @@ RUN pip install --no-cache-dir \
     "pydantic-settings>=2.5" \
     "httpx>=0.27" \
     "networkx>=3.3" \
-    "python-multipart>=0.0.9"
+    "python-multipart>=0.0.9" \
+    "pytest>=8.3" \
+    "pytest-asyncio>=0.24"
 
 COPY backend /app/backend
 COPY frontend /app/frontend
