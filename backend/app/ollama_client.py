@@ -93,6 +93,38 @@ class OllamaClient:
                 if chunk.get("done"):
                     return
 
+    async def generate(
+        self,
+        model: str,
+        prompt: str,
+        *,
+        suffix: str | None = None,
+        options: dict | None = None,
+        raw: bool = False,
+    ) -> dict:
+        """Raw completion via ``/api/generate``.
+
+        Used by the CrossCodeEval harness to hit fill-in-the-middle
+        models (``qwen2.5-coder``, ``deepseek-coder``, ``starcoder2``)
+        with their native FIM tokens rather than a chat wrapper. The
+        response text lives at ``response["response"]``.
+        """
+        payload: dict = {"model": model, "prompt": prompt, "stream": False}
+        if suffix is not None:
+            payload["suffix"] = suffix
+        if raw:
+            payload["raw"] = True
+        if options:
+            payload["options"] = options
+        async with await self._client() as http:
+            r = await http.post("/api/generate", json=payload)
+            if r.status_code != 200:
+                raise OllamaError(f"/api/generate → {r.status_code}: {r.text[:500]}")
+            data = r.json()
+            if "response" not in data:
+                raise OllamaError(f"missing 'response' in generate payload: {data}")
+            return data
+
     async def embed(self, model: str, text: str) -> list[float]:
         """Return an embedding vector for ``text`` using ``model``."""
         async with await self._client() as http:

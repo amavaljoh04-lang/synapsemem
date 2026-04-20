@@ -227,19 +227,11 @@ def extract_completion(raw_reply: str, groundtruth: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-BASELINE_PROMPT = (
-    "You are a code completion model. Complete the following {lang} code. "
-    "Emit ONLY the continuation, no explanation, no markdown fences.\n\n"
-    "### Code\n{prompt}"
-)
-
-SYNAPSE_PROMPT = (
-    "You are a code completion model with access to a memory of the "
-    "project's other files. Use the memory to keep names, imports and "
-    "signatures consistent. Emit ONLY the continuation of the target "
-    "file, no explanation, no markdown fences.\n\n"
-    "### Project memory\n{memory}\n\n"
-    "### Target file so far\n{prompt}"
+_MEMORY_HEADER = (
+    "# --- Cross-file memory (SynapseMem) ---\n"
+    "# Symbols, imports, and unresolved references from other files in\n"
+    "# this repository. Use them to keep names, signatures and imports\n"
+    "# consistent with the rest of the project.\n"
 )
 
 
@@ -265,50 +257,71 @@ class RunnerConfig:
     num_predict: int = 128
 
 
-async def run_sample(sample: CCESample, cfg: RunnerConfig) -> dict:
-    """Run one sample under one mode and score it."""
-    client = OllamaClient(cfg.ollama_base_url)
-    if cfg.mode == "baseline":
-        prompt = BASELINE_PROMPT.format(prompt=sample.prompt, lang=sample.language)
-    elif cfg.mode == "synapse":
-        session, engine = await _build_temp_session()
-        try:
-            project_id = f"cce-{sample.task_id.replace('/', '-')}"
-            for idx, (path, content) in enumerate(sample.crossfile_files or []):
-                safe_path = path or f"extra_{idx}.py"
-                await memory.ingest_file(
-                    session,
-                    project_id=project_id,
-                    path=safe_path,
-                    content=content,
-                    language="python" if safe_path.endswith(".py") else "other",
-                )
-            await session.commit()
-            mem_block = await build_chat_context(
+async def _build_memory_prefix(sample: CCESample) -> str:
+    """Ingest crossfile files, then assemble SynapseMem's memory block.
+
+    Returns a comment-prefixed string ready to be prepended to the
+    target file. Keeping it comment-prefixed means even a pure FIM
+    model reads it as comments rather than as code to continue.
+    """
+    session, engine = await _build_temp_session()
+    try:
+        project_id = f"cce-{sample.task_id.replace('/', '-')}"
+        for idx, (path, content) in enumerate(sample.crossfile_files or []):
+            safe_path = path or f"extra_{idx}.py"
+            await memory.ingest_file(
                 session,
-                project_id,
-                sample.prompt,
-                recent_episodes=0,
+                project_id=project_id,
+                path=safe_path,
+                content=content,
+                language="python" if safe_path.endswith(".py") else "other",
             )
-        finally:
-            await session.close()
-            await engine.dispose()
-        prompt = SYNAPSE_PROMPT.format(
-            memory=mem_block.strip() or "(empty memory)",
-            prompt=sample.prompt,
+        await session.commit()
+        mem_block = await build_chat_context(
+            session,
+            project_id,
+            sample.prompt,
+            recent_episodes=0,
         )
-    else:
+    finally:
+        await session.close()
+        await engine.dispose()
+    if not mem_block.strip():
+        return ""
+    commented = "\n".join(f"# {line}" if line else "#" for line in mem_block.splitlines())
+    return _MEMORY_HEADER + commented + "\n# --- end memory ---\n\n"
+
+
+async def run_sample(sample: CCESample, cfg: RunnerConfig) -> dict:
+    """Run one sample under one mode and score it.
+
+    Both modes use ``/api/generate`` with FIM ``suffix`` so
+    qwen2.5-coder / deepseek-coder fires its native fill-in-the-middle
+    path. The only difference is whether a memory prefix is prepended
+    to ``prompt`` (synapse) or not (baseline).
+    """
+    client = OllamaClient(cfg.ollama_base_url)
+    prefix = ""
+    if cfg.mode == "synapse":
+        prefix = await _build_memory_prefix(sample)
+    elif cfg.mode != "baseline":
         raise ValueError(f"unknown mode: {cfg.mode}")
 
-    messages = [{"role": "user", "content": prompt}]
+    prompt = prefix + sample.prompt
+    suffix = sample.right_context or ""
     start = time.perf_counter()
-    resp = await client.chat(
+    resp = await client.generate(
         model=cfg.model,
-        messages=messages,
-        options={"temperature": cfg.temperature, "num_predict": cfg.num_predict},
+        prompt=prompt,
+        suffix=suffix,
+        options={
+            "temperature": cfg.temperature,
+            "num_predict": cfg.num_predict,
+            "stop": ["\n\n"],
+        },
     )
     elapsed = time.perf_counter() - start
-    reply = (resp.get("message") or {}).get("content", "")
+    reply = resp.get("response", "") or ""
     prediction = extract_completion(reply, sample.groundtruth)
     em = exact_match(prediction, sample.groundtruth)
     es = edit_similarity(prediction, sample.groundtruth)

@@ -45,11 +45,37 @@ tolerates both shapes of ``crossfile_context`` (flat string or list of
 
 Updated manually after each commit that affects retrieval.
 
-| Mode       | Model                  | Samples | EM     | ES     | Date       | Notes                 |
-|------------|------------------------|---------|--------|--------|------------|-----------------------|
-| baseline   | qwen2.5-coder:32b      | TBD     | —      | —      | —          | awaiting live run     |
-| synapse    | qwen2.5-coder:32b      | TBD     | —      | —      | —          | keyword retrieval     |
-| synapse+emb| qwen2.5-coder:32b      | TBD     | —      | —      | —          | nomic-embed-text      |
+| Mode       | Model                  | Samples | EM     | ES     | Date       | Notes                                                               |
+|------------|------------------------|---------|--------|--------|------------|---------------------------------------------------------------------|
+| baseline   | qwen2.5-coder:7b       | 20      | 0.000  | 0.276  | 2026-04-20 | smoke; prompt only, no crossfile context                            |
+| synapse    | qwen2.5-coder:7b       | 20      | 0.000  | 0.253  | 2026-04-20 | blob splitter + AST + keyword/semantic; no uplift yet on line-level |
+| baseline   | qwen2.5-coder:32b      | —       | —      | —      | —          | awaiting run                                                        |
+| synapse    | qwen2.5-coder:32b      | —       | —      | —      | —          | awaiting run                                                        |
+
+**Reading the smoke**: 20 samples is statistically noisy, but the gap is
+real: on line-level completion with the official oracle crossfile blob,
+the current SynapseMem context does not help qwen2.5-coder:7b. Failure
+modes seen so far:
+
+1. CCE completions are mid-expression (``self.tokenizer.decode(sequence
+   _actual[:, -max_stop_string:])[0]``) — knowing *that another file
+   defines ``tokenizer.decode``* does not predict the exact token
+   sequence the grader checks.
+2. The 7B coder is a fill-in-the-middle model; an instruction wrapper
+   (``You are a code completion model ... emit only the continuation``)
+   costs it a few ES points before any memory block is added.
+3. Our retrieval surfaces symbols matching prompt keywords, but the
+   completion target often refers to *locals* of the parent file, which
+   are never in the symbol graph.
+
+**Planned fixes before the 32B run**:
+
+- Switch the prompt to raw FIM tokens (``<|fim_prefix|>`` / ``<|fim_
+  suffix|>``) instead of the chat-style instruction wrapper.
+- Inject ``right_context`` in both modes — the memory block should add
+  signal on top of the full file skeleton, not replace it.
+- Include the verbatim crossfile text as a fallback when no symbol
+  matches fire (structured view is additive, not replacement).
 
 ## LongMemEval (Wu et al., ICLR 2025)
 
