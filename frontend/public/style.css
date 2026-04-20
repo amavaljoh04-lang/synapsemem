@@ -1,93 +1,123 @@
+/* ===========================================================================
+ * SynapseMem — mobile-first layout.
+ *
+ *  Small screens (default):
+ *    - Single column, full-viewport chat
+ *    - Sticky top bar with hamburger
+ *    - Off-canvas drawer for project / model / ingest / promises
+ *    - Input bar sticks above the Android soft keyboard via visualViewport
+ *      (see app.js). `env(safe-area-inset-bottom)` handles iOS gesture bar.
+ *
+ *  Wide screens (>= 900px):
+ *    - Drawer becomes a permanent left sidebar; no hamburger.
+ *    - Chat takes the rest of the viewport, input bar stays at the bottom.
+ * ======================================================================= */
+
 * {
   box-sizing: border-box;
 }
 
+html,
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+  padding: 0;
+  height: 100%;
+  overscroll-behavior-y: none;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto,
+    sans-serif;
   background: #0b0f14;
   color: #e6edf3;
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
+  -webkit-font-smoothing: antialiased;
 }
 
-header {
-  background: #0e141b;
-  border-bottom: 1px solid #1f2a36;
-  padding: 10px 18px;
+#app {
+  min-height: 100dvh;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  grid-template-columns: 1fr;
+}
+
+/* ---- Top bar ------------------------------------------------------------ */
+#topbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 10px;
+  background: #0e141b;
+  border-bottom: 1px solid #1f2a36;
+  padding: 10px 14px;
+  padding-top: calc(10px + env(safe-area-inset-top));
 }
 
-header h1 {
-  font-size: 16px;
+#topbar h1 {
+  font-size: 15px;
   font-weight: 600;
   margin: 0;
   letter-spacing: 0.02em;
 }
 
-header nav {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+#topbar-status {
   margin-left: auto;
-  font-size: 13px;
-}
-
-select,
-button {
-  background: #1a2431;
-  color: #e6edf3;
-  border: 1px solid #2b3a4d;
-  border-radius: 6px;
-  padding: 6px 10px;
-  font-size: 13px;
-  cursor: pointer;
-}
-
-button:hover,
-select:hover {
-  background: #223044;
-}
-
-.muted {
+  font-size: 11px;
   color: #7b8ba0;
-  font-size: 12px;
+  text-align: right;
+  max-width: 55vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-main {
-  flex: 1;
-  display: grid;
-  grid-template-columns: 360px 1fr 320px;
-  gap: 1px;
-  background: #1f2a36;
-  min-height: 0;
+.icon-btn {
+  background: transparent;
+  border: 0;
+  color: #c9d1d9;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
+.icon-btn:hover,
+.icon-btn:focus-visible {
+  background: #1a2431;
+  outline: none;
+}
+
+/* ---- Chat main area ----------------------------------------------------- */
 #chat-panel {
-  background: #0e141b;
   display: flex;
   flex-direction: column;
   min-height: 0;
+  height: calc(100dvh - 56px);
+  position: relative;
 }
 
 #messages {
-  flex: 1;
+  flex: 1 1 auto;
   overflow-y: auto;
-  padding: 14px 14px 0 14px;
-  font-size: 13px;
+  padding: 12px 12px 14px 12px;
+  font-size: 14px;
   line-height: 1.5;
+  scroll-behavior: smooth;
+  /* Leave room for the sticky input bar at the bottom. */
+  padding-bottom: calc(140px + env(safe-area-inset-bottom));
 }
 
 .msg {
-  margin-bottom: 14px;
+  margin: 0 auto 12px auto;
   padding: 10px 12px;
-  border-radius: 8px;
+  border-radius: 10px;
   border: 1px solid #1f2a36;
   white-space: pre-wrap;
   word-break: break-word;
+  max-width: 720px;
 }
 
 .msg.user {
@@ -99,7 +129,7 @@ main {
   background: #0f1a24;
 }
 
-.msg.assistant .meta {
+.msg .meta {
   color: #7b8ba0;
   font-size: 11px;
   margin-bottom: 4px;
@@ -112,26 +142,39 @@ main {
 }
 
 .msg details pre {
-  max-height: 30vh;
+  max-height: 35vh;
 }
 
+/* ---- Chat input: sticky above the keyboard ------------------------------ */
 #chat-form {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #0e141b;
   border-top: 1px solid #1f2a36;
-  padding: 10px;
+  padding: 10px 12px calc(10px + env(safe-area-inset-bottom)) 12px;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  z-index: 25;
+  /* app.js moves this when visualViewport resizes (keyboard). */
+  transform: translateY(var(--kb-offset, 0px));
+  transition: transform 0.12s ease-out;
 }
 
 #chat-input {
   background: #0b0f14;
   color: #e6edf3;
   border: 1px solid #2b3a4d;
-  border-radius: 6px;
-  padding: 8px;
+  border-radius: 8px;
+  padding: 10px 12px;
   font-family: inherit;
-  font-size: 13px;
-  resize: vertical;
+  font-size: 15px;
+  line-height: 1.35;
+  resize: none;
+  max-height: 35vh;
+  min-height: 44px;
 }
 
 .chat-actions {
@@ -141,77 +184,102 @@ main {
   gap: 10px;
 }
 
-#graph {
+button {
+  background: #1a2431;
+  color: #e6edf3;
+  border: 1px solid #2b3a4d;
+  border-radius: 6px;
+  padding: 8px 14px;
+  font-size: 14px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+button:hover,
+button:focus-visible {
+  background: #223044;
+  outline: none;
+}
+
+select,
+input[type="text"] {
   background: #0b0f14;
-  position: relative;
+  color: #e6edf3;
+  border: 1px solid #2b3a4d;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-family: inherit;
+  font-size: 14px;
+  width: 100%;
 }
 
-aside {
+.muted {
+  color: #7b8ba0;
+  font-size: 12px;
+}
+
+.small {
+  font-size: 12px;
+}
+
+/* ---- Drawer (mobile off-canvas / desktop sidebar) ----------------------- */
+#drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: min(88vw, 360px);
   background: #0e141b;
-  padding: 16px;
+  border-right: 1px solid #1f2a36;
+  padding: 14px 14px calc(14px + env(safe-area-inset-bottom)) 14px;
   overflow-y: auto;
+  transform: translateX(-100%);
+  transition: transform 0.2s ease;
+  z-index: 40;
+  padding-top: calc(14px + env(safe-area-inset-top));
 }
 
-aside h2 {
-  font-size: 13px;
+#drawer.open {
+  transform: translateX(0);
+  box-shadow: 0 0 30px rgba(0, 0, 0, 0.6);
+}
+
+#drawer-scrim {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+  z-index: 35;
+}
+
+#drawer-scrim.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.drawer-section {
+  margin-bottom: 20px;
+}
+
+.drawer-section h2 {
+  font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: #7b8ba0;
   margin: 0 0 8px 0;
 }
 
-pre {
-  background: #0b0f14;
-  border: 1px solid #1f2a36;
-  border-radius: 6px;
-  padding: 10px;
-  font-size: 12px;
-  color: #c9d1d9;
-  max-height: 40vh;
-  overflow: auto;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-hr {
-  border: 0;
-  border-top: 1px solid #1f2a36;
-  margin: 16px 0;
-}
-
-ul {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-}
-
-ul li {
-  padding: 6px 0;
-  border-bottom: 1px dashed #1f2a36;
-  font-size: 12px;
-}
-
-ul li .promise-file {
-  color: #7b8ba0;
-  font-size: 11px;
+.drawer-section > label {
   display: block;
+  margin: 10px 0 4px 0;
 }
 
-#ingest-form {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-bottom: 4px;
-}
-
-#ingest-form input[type="text"] {
-  background: #0b0f14;
-  color: #e6edf3;
-  border: 1px solid #2b3a4d;
-  border-radius: 6px;
-  padding: 6px 8px;
-  font-family: inherit;
-  font-size: 12px;
+.drawer-section select,
+.drawer-section input[type="text"],
+.drawer-section button {
+  margin-top: 6px;
 }
 
 .drop-zone {
@@ -226,6 +294,7 @@ ul li .promise-file {
   color: #7b8ba0;
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s;
+  margin-top: 8px;
 }
 
 .drop-zone:hover,
@@ -247,4 +316,109 @@ ul li .promise-file {
   border-radius: 4px;
   padding: 1px 5px;
   color: #c9d1d9;
+}
+
+#ingest-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+ul li {
+  padding: 6px 0;
+  border-bottom: 1px dashed #1f2a36;
+  font-size: 12px;
+}
+
+ul li .promise-file {
+  color: #7b8ba0;
+  font-size: 11px;
+  display: block;
+}
+
+pre {
+  background: #0b0f14;
+  border: 1px solid #1f2a36;
+  border-radius: 6px;
+  padding: 8px;
+  font-size: 12px;
+  color: #c9d1d9;
+  max-height: 30vh;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+}
+
+details > summary {
+  cursor: pointer;
+  color: #7b8ba0;
+  font-size: 13px;
+}
+
+#graph {
+  height: 45vh;
+  background: #0b0f14;
+  border: 1px solid #1f2a36;
+  border-radius: 6px;
+  margin-top: 8px;
+}
+
+/* ---- Wide layout: drawer is always visible as sidebar ------------------- */
+@media (min-width: 900px) {
+  #app {
+    grid-template-columns: 340px 1fr;
+    grid-template-rows: auto 1fr;
+    grid-template-areas:
+      "drawer topbar"
+      "drawer chat";
+    min-height: 100dvh;
+  }
+
+  #drawer {
+    position: sticky;
+    grid-area: drawer;
+    top: 0;
+    height: 100dvh;
+    transform: none;
+    width: auto;
+    border-right: 1px solid #1f2a36;
+  }
+
+  #drawer-scrim,
+  #drawer-toggle {
+    display: none;
+  }
+
+  #topbar {
+    grid-area: topbar;
+    position: sticky;
+  }
+
+  #chat-panel {
+    grid-area: chat;
+    height: calc(100dvh - 56px);
+  }
+
+  #chat-form {
+    position: sticky;
+    bottom: 0;
+    left: auto;
+    right: auto;
+    transform: none !important;
+  }
+
+  #messages {
+    padding-bottom: 16px;
+  }
+
+  #graph {
+    height: 300px;
+  }
 }

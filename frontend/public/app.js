@@ -106,15 +106,23 @@ const STYLE = [
 ];
 
 let cy = null;
+let graphDirty = true;
 
 function setStatus(msg) {
-  document.getElementById("status").textContent = msg;
+  const el = document.getElementById("topbar-status");
+  if (el) el.textContent = msg;
 }
 
 function renderDetail(obj) {
-  document.getElementById("detail").textContent = obj
-    ? JSON.stringify(obj, null, 2)
-    : "";
+  const detailEl = document.getElementById("detail");
+  const emptyEl = document.getElementById("detail-empty");
+  if (obj) {
+    detailEl.textContent = JSON.stringify(obj, null, 2);
+    if (emptyEl) emptyEl.style.display = "none";
+  } else {
+    detailEl.textContent = "";
+    if (emptyEl) emptyEl.style.display = "";
+  }
 }
 
 function renderPromises(promises) {
@@ -207,7 +215,8 @@ async function sendChatStream(projectId, message, model) {
   }
   attachContextDetails(body.parentElement, contextText);
   setStatus("ready");
-  refreshGraph();
+  graphDirty = true;
+  maybeRefreshGraph();
 }
 
 async function sendChatSingleShot(projectId, message, model) {
@@ -226,7 +235,8 @@ async function sendChatSingleShot(projectId, message, model) {
   body.textContent = data.reply || "(empty response)";
   attachContextDetails(body.parentElement, data.context || "");
   setStatus("ready");
-  refreshGraph();
+  graphDirty = true;
+  maybeRefreshGraph();
 }
 
 async function refreshModels() {
@@ -274,7 +284,8 @@ async function refreshProjects() {
     sel.appendChild(opt);
   }
   sel.value = projects.some((p) => p.id === previous) ? previous : projects[0].id;
-  await refreshGraph();
+  graphDirty = true;
+  await maybeRefreshGraph();
 }
 
 async function refreshGraph() {
@@ -338,8 +349,16 @@ function bindChatForm() {
   });
 }
 
-document.getElementById("refresh").addEventListener("click", refreshGraph);
-document.getElementById("project").addEventListener("change", refreshGraph);
+document
+  .getElementById("refresh")
+  .addEventListener("click", () => {
+    graphDirty = true;
+    refreshGraph();
+  });
+document.getElementById("project").addEventListener("change", () => {
+  graphDirty = true;
+  maybeRefreshGraph();
+});
 
 function bindIngestForm() {
   const form = document.getElementById("ingest-form");
@@ -424,7 +443,8 @@ function bindIngestForm() {
       const sel = document.getElementById("project");
       if ([...sel.options].some((o) => o.value === projectId)) {
         sel.value = projectId;
-        await refreshGraph();
+        graphDirty = true;
+        await maybeRefreshGraph();
       }
     } catch (err) {
       setIngestStatus(`error: ${err.message}`, true);
@@ -432,8 +452,77 @@ function bindIngestForm() {
   });
 }
 
+// ---- Drawer toggle (mobile hamburger) ---------------------------------
+function bindDrawer() {
+  const drawer = document.getElementById("drawer");
+  const scrim = document.getElementById("drawer-scrim");
+  const toggle = document.getElementById("drawer-toggle");
+  if (!drawer || !toggle) return;
+
+  const setOpen = (open) => {
+    drawer.classList.toggle("open", open);
+    scrim.classList.toggle("open", open);
+    toggle.setAttribute("aria-expanded", open ? "true" : "false");
+  };
+
+  toggle.addEventListener("click", () => {
+    const isOpen = drawer.classList.contains("open");
+    setOpen(!isOpen);
+    if (!isOpen) maybeRefreshGraph();
+  });
+  scrim.addEventListener("click", () => setOpen(false));
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") setOpen(false);
+  });
+}
+
+// ---- Graph: only render when visible ---------------------------------
+function graphIsVisible() {
+  // Wide layout: drawer is permanently rendered => graph is visible if
+  // the <details> wrapping it is open.
+  // Mobile: additionally require the drawer to be open.
+  const container = document.getElementById("graph");
+  if (!container) return false;
+  const detailsOpen = container.closest("details")?.open ?? true;
+  if (!detailsOpen) return false;
+  if (window.innerWidth >= 900) return true;
+  return document.getElementById("drawer")?.classList.contains("open") ?? false;
+}
+
+async function maybeRefreshGraph() {
+  if (!graphDirty) return;
+  if (!graphIsVisible()) return;
+  await refreshGraph();
+  graphDirty = false;
+}
+
+// ---- Android keyboard tracking (visualViewport) ------------------------
+function bindKeyboardTracking() {
+  const vv = window.visualViewport;
+  if (!vv) return;
+  const update = () => {
+    const offset = Math.max(
+      0,
+      window.innerHeight - vv.height - vv.offsetTop,
+    );
+    document.documentElement.style.setProperty(
+      "--kb-offset",
+      `-${offset}px`,
+    );
+  };
+  vv.addEventListener("resize", update);
+  vv.addEventListener("scroll", update);
+  update();
+}
+
 bindChatForm();
 bindIngestForm();
+bindDrawer();
+bindKeyboardTracking();
 refreshModels();
 refreshProjects();
-setInterval(refreshProjects, 10000);
+// No more setInterval — projects list is refreshed on drawer open, on
+// ingest success, and when the user hits the Refresh button.
+document
+  .querySelector("#drawer details")
+  ?.addEventListener("toggle", maybeRefreshGraph);
