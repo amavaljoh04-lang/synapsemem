@@ -84,12 +84,15 @@ def _extract_crossfile_files(raw) -> list[tuple[str, str]]:
         return [("crossfile.txt", raw)]
     if isinstance(raw, dict):
         # Official release ships ``{"text": "# Here are some relevant
-        # code fragments ..."}`` — a flat blob that already contains
-        # the other files annotated with ``# file.py\n# ...`` headers.
+        # code fragments ..."}`` — a flat blob where each fragment is
+        # prefixed by ``# the below code fragment can be found in:\n#
+        # <filename>`` and the body is every line prepended with ``# ``.
+        # We reverse that so downstream ingestion sees real Python, not
+        # comment-only text that the AST extractor would drop.
         text = raw.get("text") or raw.get("content") or ""
-        if text:
-            return [("crossfile.txt", text)]
-        return []
+        if not text:
+            return []
+        return _split_cceval_blob(text)
     if not isinstance(raw, list):
         return []
     out: list[tuple[str, str]] = []
@@ -100,6 +103,63 @@ def _extract_crossfile_files(raw) -> list[tuple[str, str]]:
         content = entry.get("content") or entry.get("text") or ""
         if path and isinstance(content, str):
             out.append((str(path), content))
+    return out
+
+
+_FRAGMENT_HEADER = "# the below code fragment can be found in:"
+
+
+def _split_cceval_blob(text: str) -> list[tuple[str, str]]:
+    """Split the oracle/rg1 comment-annotated blob into per-file snippets.
+
+    Each fragment in the blob starts with a line matching
+    ``_FRAGMENT_HEADER`` and is followed by a filename comment and
+    comment-prefixed source lines. Multiple fragments may point at the
+    same file; we concatenate them in order.
+
+    The returned list preserves filename ordering so downstream
+    ingestion gets stable, deterministic paths for the same sample.
+    """
+    by_path: dict[str, list[str]] = {}
+    order: list[str] = []
+    current: str | None = None
+    awaiting_filename = False
+
+    for line in text.splitlines():
+        stripped = line.rstrip()
+        if stripped == _FRAGMENT_HEADER:
+            awaiting_filename = True
+            current = None
+            continue
+        if awaiting_filename:
+            awaiting_filename = False
+            if stripped.startswith("# ") and len(stripped) > 2:
+                candidate = stripped[2:].strip()
+                current = candidate or None
+                if current and current not in by_path:
+                    by_path[current] = []
+                    order.append(current)
+            continue
+        if current is None:
+            continue
+        if not stripped:
+            by_path[current].append("")
+            continue
+        if stripped.startswith("# "):
+            by_path[current].append(stripped[2:])
+        elif stripped.startswith("#"):
+            # ``#<something>`` (no space) — keep the text after the hash.
+            by_path[current].append(stripped[1:])
+        # Any non-comment line ends the fragment until the next header.
+    out: list[tuple[str, str]] = []
+    for path in order:
+        lines = by_path[path]
+        while lines and not lines[0].strip():
+            lines.pop(0)
+        while lines and not lines[-1].strip():
+            lines.pop()
+        if lines:
+            out.append((path, "\n".join(lines) + "\n"))
     return out
 
 
