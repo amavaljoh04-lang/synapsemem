@@ -110,10 +110,26 @@ v0.1 scaffold — **not ready for production, not ready for benchmarks yet**.
 - [x] `/ingest/file`, `/ingest/directory`
 - [x] `/projects/{id}/graph` (Cytoscape-compatible payload)
 - [x] Minimal web frontend: graph viewer
-- [ ] LLM extractor for natural-language prompts → requirements
-- [ ] Chat endpoint with memory-augmented context
-- [ ] Reflection worker (decay, merge, contradictions)
-- [ ] Multi-agent-coder integration (stream coder events in)
+- [x] Chat endpoint with memory-backed context assembly
+- [x] Zip / directory ingestion (drag-drop in UI)
+- [x] Mobile-first responsive UI (hamburger, keyboard-aware input)
+- [x] Project-generation loop (plan → write → sandbox test → ZIP)
+- [x] Embedding layer (`nomic-embed-text`) + semantic symbol retrieval
+- [x] CrossCodeEval harness (EM + edit similarity, baseline vs synapse)
+- [ ] Real CrossCodeEval run (pending dataset download on server)
+- [ ] Preferences extractor + idle reflection worker
+
+### Ollama models the server expects
+
+- `qwen2.5-coder:32b` (default chat / generation / extractor)
+- `nomic-embed-text` (symbol embeddings — `ollama pull nomic-embed-text`
+  once on the host; ~270 MB, runs fine on a 3070 alongside the 32B on
+  the 5070)
+
+Changing the embedding model is a one-line change in
+`backend/app/config.py` (`embeddings_model`). When you change it, hit
+`POST /projects/{id}/reindex` to force a re-embedding of every symbol —
+old vectors are replaced in place, no DB migration needed.
 - [ ] CrossCodeEval harness + first numbers
 
 ---
