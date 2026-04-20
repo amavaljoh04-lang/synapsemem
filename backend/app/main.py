@@ -11,6 +11,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__
+from .api import chat as chat_routes
 from .api import ingest as ingest_routes
 from .api import query as query_routes
 from .config import settings
@@ -57,6 +58,7 @@ async def health() -> dict[str, str]:
 
 app.include_router(ingest_routes.router)
 app.include_router(query_routes.router)
+app.include_router(chat_routes.router)
 
 
 if STATIC_DIR.exists():

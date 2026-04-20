@@ -126,6 +126,119 @@ async function fetchJSON(url) {
   return r.json();
 }
 
+function appendMessage(role, text, meta) {
+  const box = document.getElementById("messages");
+  const div = document.createElement("div");
+  div.className = `msg ${role}`;
+  if (role === "assistant" && meta) {
+    const m = document.createElement("div");
+    m.className = "meta";
+    m.textContent = meta;
+    div.appendChild(m);
+  }
+  const body = document.createElement("div");
+  body.className = "body";
+  body.textContent = text;
+  div.appendChild(body);
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+  return body;
+}
+
+function attachContextDetails(div, contextText) {
+  if (!contextText) return;
+  const details = document.createElement("details");
+  const summary = document.createElement("summary");
+  summary.textContent = `memory injected (${contextText.length} chars)`;
+  const pre = document.createElement("pre");
+  pre.textContent = contextText;
+  details.appendChild(summary);
+  details.appendChild(pre);
+  div.appendChild(details);
+}
+
+async function sendChatStream(projectId, message, model) {
+  appendMessage("user", message);
+  const body = appendMessage("assistant", "…", `${model}`);
+  const r = await fetch("/chat/stream", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ project_id: projectId, message, model }),
+  });
+  if (!r.ok) {
+    body.textContent = `error: HTTP ${r.status}`;
+    return;
+  }
+  const reader = r.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  body.textContent = "";
+  let contextText = "";
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let idx;
+    while ((idx = buffer.indexOf("\n")) !== -1) {
+      const line = buffer.slice(0, idx);
+      buffer = buffer.slice(idx + 1);
+      if (!line.trim()) continue;
+      try {
+        const evt = JSON.parse(line);
+        if (evt.type === "context") contextText = evt.context || "";
+        else if (evt.type === "token") body.textContent += evt.text;
+        else if (evt.type === "error") body.textContent += `\n[error: ${evt.detail}]`;
+      } catch {}
+    }
+  }
+  attachContextDetails(body.parentElement, contextText);
+  setStatus("ready");
+  refreshGraph();
+}
+
+async function sendChatSingleShot(projectId, message, model) {
+  appendMessage("user", message);
+  const body = appendMessage("assistant", "…", `${model}`);
+  const r = await fetch("/chat", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ project_id: projectId, message, model }),
+  });
+  if (!r.ok) {
+    body.textContent = `error: HTTP ${r.status}`;
+    return;
+  }
+  const data = await r.json();
+  body.textContent = data.reply || "(empty response)";
+  attachContextDetails(body.parentElement, data.context || "");
+  setStatus("ready");
+  refreshGraph();
+}
+
+async function refreshModels() {
+  try {
+    const data = await fetchJSON("/chat/models");
+    const sel = document.getElementById("model");
+    sel.innerHTML = "";
+    for (const name of data.models) {
+      const opt = document.createElement("option");
+      opt.value = name;
+      opt.textContent = name;
+      sel.appendChild(opt);
+    }
+    if (data.default && data.models.includes(data.default)) {
+      sel.value = data.default;
+    }
+  } catch (err) {
+    const sel = document.getElementById("model");
+    sel.innerHTML = "";
+    const opt = document.createElement("option");
+    opt.textContent = "Ollama unavailable";
+    opt.disabled = true;
+    sel.appendChild(opt);
+  }
+}
+
 async function refreshProjects() {
   const projects = await fetchJSON("/projects");
   const sel = document.getElementById("project");
@@ -184,8 +297,37 @@ async function refreshGraph() {
   }
 }
 
+function bindChatForm() {
+  const form = document.getElementById("chat-form");
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const input = document.getElementById("chat-input");
+    const message = input.value.trim();
+    if (!message) return;
+    const projectId = document.getElementById("project").value || "default";
+    const model = document.getElementById("model").value || undefined;
+    const streaming = document.getElementById("stream-toggle").checked;
+    input.value = "";
+    setStatus("thinking…");
+    try {
+      if (streaming) await sendChatStream(projectId, message, model);
+      else await sendChatSingleShot(projectId, message, model);
+    } catch (err) {
+      setStatus(`chat error: ${err.message}`);
+    }
+  });
+  document.getElementById("chat-input").addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      form.requestSubmit();
+    }
+  });
+}
+
 document.getElementById("refresh").addEventListener("click", refreshGraph);
 document.getElementById("project").addEventListener("change", refreshGraph);
 
+bindChatForm();
+refreshModels();
 refreshProjects();
 setInterval(refreshProjects, 10000);

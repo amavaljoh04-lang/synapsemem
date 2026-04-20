@@ -4,7 +4,7 @@ services:
     container_name: synapsemem
     restart: unless-stopped
     ports:
-      - "8100:8100"
+      - "5555:5555"
     volumes:
       - ./data:/app/data
     environment:

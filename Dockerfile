@@ -24,6 +24,6 @@ COPY frontend /app/frontend
 
 RUN mkdir -p /app/data
 
-EXPOSE 8100
+EXPOSE 5555
 WORKDIR /app/backend
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8100"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "5555"]

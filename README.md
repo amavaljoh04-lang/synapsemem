@@ -127,21 +127,21 @@ docker compose up --build
 # Or locally with uv
 cd backend
 uv sync
-uv run uvicorn app.main:app --reload --port 8100
+uv run uvicorn app.main:app --reload --port 5555
 ```
 
-Then open `http://localhost:8100/` for the graph viewer, or hit
-`http://localhost:8100/docs` for the OpenAPI UI.
+Then open `http://localhost:5555/` for the graph viewer, or hit
+`http://localhost:5555/docs` for the OpenAPI UI.
 
 ### Ingest your own project
 
 ```bash
-curl -X POST http://localhost:8100/ingest/directory \
+curl -X POST http://localhost:5555/ingest/directory \
   -H "content-type: application/json" \
   -d '{"project_id": "my-repo", "path": "/absolute/path/to/repo"}'
 ```
 
-Then GET `http://localhost:8100/projects/my-repo/graph` and watch it
+Then GET `http://localhost:5555/projects/my-repo/graph` and watch it
 render in the UI.
 
 ---
