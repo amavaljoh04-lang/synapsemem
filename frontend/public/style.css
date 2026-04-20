@@ -196,3 +196,55 @@ ul li .promise-file {
   font-size: 11px;
   display: block;
 }
+
+#ingest-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+#ingest-form input[type="text"] {
+  background: #0b0f14;
+  color: #e6edf3;
+  border: 1px solid #2b3a4d;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-family: inherit;
+  font-size: 12px;
+}
+
+.drop-zone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  border: 1px dashed #2b3a4d;
+  border-radius: 8px;
+  padding: 18px 12px;
+  font-size: 12px;
+  color: #7b8ba0;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.drop-zone:hover,
+.drop-zone:focus-visible {
+  border-color: #4a6b8f;
+  background: #0b1620;
+  outline: none;
+}
+
+.drop-zone.drag-over {
+  border-color: #6db3ff;
+  background: #0d2236;
+  color: #c9d1d9;
+}
+
+.drop-zone code {
+  background: #0b0f14;
+  border: 1px solid #1f2a36;
+  border-radius: 4px;
+  padding: 1px 5px;
+  color: #c9d1d9;
+}

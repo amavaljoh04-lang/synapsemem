@@ -341,7 +341,99 @@ function bindChatForm() {
 document.getElementById("refresh").addEventListener("click", refreshGraph);
 document.getElementById("project").addEventListener("change", refreshGraph);
 
+function bindIngestForm() {
+  const form = document.getElementById("ingest-form");
+  const dropZone = document.getElementById("drop-zone");
+  const fileInput = document.getElementById("ingest-file");
+  const status = document.getElementById("ingest-status");
+  const projectIdInput = document.getElementById("ingest-project-id");
+  if (!form) return;
+
+  const setIngestStatus = (msg, isError = false) => {
+    status.textContent = msg;
+    status.style.color = isError ? "#ff8a80" : "#7b8ba0";
+  };
+
+  const setFile = (file) => {
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith(".zip")) {
+      setIngestStatus(`Not a .zip: ${file.name}`, true);
+      return;
+    }
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    fileInput.files = dt.files;
+    dropZone.querySelector("span").textContent = `${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+    if (!projectIdInput.value.trim()) {
+      projectIdInput.value = file.name.replace(/\.zip$/i, "").slice(0, 64);
+    }
+  };
+
+  dropZone.addEventListener("click", () => fileInput.click());
+  dropZone.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      fileInput.click();
+    }
+  });
+  dropZone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    dropZone.classList.add("drag-over");
+  });
+  dropZone.addEventListener("dragleave", () =>
+    dropZone.classList.remove("drag-over"),
+  );
+  dropZone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    dropZone.classList.remove("drag-over");
+    const f = e.dataTransfer?.files?.[0];
+    if (f) setFile(f);
+  });
+  fileInput.addEventListener("change", () => {
+    if (fileInput.files[0]) setFile(fileInput.files[0]);
+  });
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const projectId = projectIdInput.value.trim();
+    const file = fileInput.files?.[0];
+    if (!projectId || !file) {
+      setIngestStatus("Pick a project id + a zip file first.", true);
+      return;
+    }
+    const fd = new FormData();
+    fd.append("project_id", projectId);
+    fd.append("language", "python");
+    fd.append("file", file);
+    setIngestStatus(`Uploading ${file.name}…`);
+    try {
+      const r = await fetch("/ingest/archive", { method: "POST", body: fd });
+      if (!r.ok) {
+        const text = await r.text();
+        setIngestStatus(`HTTP ${r.status}: ${text.slice(0, 200)}`, true);
+        return;
+      }
+      const data = await r.json();
+      const n = data.ingested?.length || 0;
+      const open = data.ingested?.reduce((a, b) => a + (b.new_promises || 0), 0) || 0;
+      const resolved = data.ingested?.reduce((a, b) => a + (b.resolved_promises || 0), 0) || 0;
+      setIngestStatus(
+        `Ingested ${n} files · ${open} new promises · ${resolved} resolved`,
+      );
+      await refreshProjects();
+      const sel = document.getElementById("project");
+      if ([...sel.options].some((o) => o.value === projectId)) {
+        sel.value = projectId;
+        await refreshGraph();
+      }
+    } catch (err) {
+      setIngestStatus(`error: ${err.message}`, true);
+    }
+  });
+}
+
 bindChatForm();
+bindIngestForm();
 refreshModels();
 refreshProjects();
 setInterval(refreshProjects, 10000);

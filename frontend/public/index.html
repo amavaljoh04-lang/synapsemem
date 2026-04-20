@@ -40,6 +40,23 @@
       </section>
       <section id="graph"></section>
       <aside id="panel">
+        <h2>Ingest a project</h2>
+        <form id="ingest-form">
+          <label class="muted" for="ingest-project-id">Project id</label>
+          <input type="text" id="ingest-project-id" placeholder="my-app" required />
+          <label
+            id="drop-zone"
+            for="ingest-file"
+            class="drop-zone"
+            tabindex="0"
+          >
+            <span>Drop a <code>.zip</code> of your project here, or click to pick one.</span>
+            <input type="file" id="ingest-file" accept=".zip" hidden />
+          </label>
+          <button type="submit" id="ingest-submit">Ingest</button>
+          <p id="ingest-status" class="muted"></p>
+        </form>
+        <hr />
         <h2>Inspector</h2>
         <p class="muted">Click a node to see its details here.</p>
         <pre id="detail"></pre>
