@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .. import memory, models
+from .. import embeddings, memory, models
 from ..database import get_session
 from ..schemas import (
     GraphPayload,
@@ -83,6 +83,28 @@ async def list_symbols(
             )
         )
     return out
+
+
+@router.post("/projects/{project_id}/reindex")
+async def reindex_project(
+    project_id: str,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Ensure every Symbol in this project has an up-to-date embedding.
+
+    Idempotent: a second call right after the first returns
+    ``{"embedded": 0}``. Silently swallows Ollama errors so a broken
+    embedding endpoint never 500s the UI — the response carries what
+    was actually computed.
+    """
+    project = await session.get(models.Project, project_id)
+    if project is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Project not found",
+        )
+    n = await embeddings.ensure_symbols_embedded(session, project_id)
+    return {"project_id": project_id, "embedded": n}
 
 
 @router.get("/projects/{project_id}/promises", response_model=list[PromiseSummary])

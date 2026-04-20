@@ -21,7 +21,7 @@ from __future__ import annotations
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from . import models
+from . import embeddings, models
 
 
 async def build_chat_context(
@@ -86,10 +86,28 @@ async def build_chat_context(
         sections.append("## Open promises\n(none — every import resolves.)")
 
     # --- 3. Relevant symbols ---------------------------------------------
-    keywords = _extract_keywords(user_message)
+    # First: semantic retrieval if the embeddings layer is ready. Silently
+    # skipped when Ollama is unreachable; keyword match fills the rest.
     symbols: list[tuple[models.Symbol, str]] = []
     seen_ids: set[int] = set()
+    try:
+        hits = await embeddings.semantic_symbol_search(
+            session, project_id, user_message, k=max_symbols
+        )
+    except Exception:
+        hits = []
+    for hit in hits:
+        if hit.symbol.id in seen_ids:
+            continue
+        seen_ids.add(hit.symbol.id)
+        symbols.append((hit.symbol, hit.path))
+        if len(symbols) >= max_symbols:
+            break
+
+    keywords = _extract_keywords(user_message)
     for kw in keywords:
+        if len(symbols) >= max_symbols:
+            break
         rows = (
             await session.execute(
                 select(models.Symbol, models.File.path)
@@ -108,8 +126,6 @@ async def build_chat_context(
             symbols.append((sym, path))
             if len(symbols) >= max_symbols:
                 break
-        if len(symbols) >= max_symbols:
-            break
     if symbols:
         lines = ["## Relevant symbols already defined in this project"]
         for sym, path in symbols:

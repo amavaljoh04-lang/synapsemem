@@ -35,6 +35,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     String,
     Text,
     UniqueConstraint,
@@ -237,3 +238,25 @@ class Preference(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=_utcnow, onupdate=_utcnow
     )
+
+
+class SymbolEmbedding(Base):
+    """Cached embedding vector for a Symbol.
+
+    Stored as a raw little-endian float32 blob: ``numpy.asarray(vec,
+    dtype=np.float32).tobytes()``. We don't use SQLAlchemy's JSON type
+    because at query time we want to rebuild a matrix quickly for
+    cosine similarity without parsing JSON for each row.
+    """
+
+    __tablename__ = "symbol_embeddings"
+
+    symbol_id: Mapped[int] = mapped_column(
+        ForeignKey("symbols.id", ondelete="CASCADE"), primary_key=True
+    )
+    project_id: Mapped[str] = mapped_column(String(128), index=True)
+    model: Mapped[str] = mapped_column(String(128))
+    dim: Mapped[int] = mapped_column(Integer)
+    vector: Mapped[bytes] = mapped_column(LargeBinary)
+    content_hash: Mapped[str] = mapped_column(String(64), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
