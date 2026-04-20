@@ -467,3 +467,45 @@ details > summary {
     height: 300px;
   }
 }
+
+/* ---- Benchmark scoreboard ---------------------------------------------- */
+.scoreboard {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin-top: 8px;
+}
+.scoreboard th,
+.scoreboard td {
+  padding: 4px 6px;
+  border-bottom: 1px solid #1f2a36;
+  text-align: left;
+  white-space: nowrap;
+}
+.scoreboard th {
+  color: #7b8ba0;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 10px;
+}
+.scoreboard tbody tr:hover {
+  background: #131b24;
+}
+.event.kind-bench-sample {
+  color: #8aa3bd;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+}
+.event.kind-bench-summary,
+.event.bench-summary {
+  color: #8be9a7;
+  font-weight: 600;
+}
+.event.kind-bench-status {
+  color: #7b8ba0;
+  font-style: italic;
+}
+.event.kind-bench-error {
+  color: #ff8a80;
+}

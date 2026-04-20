@@ -99,6 +99,51 @@
         </div>
 
         <div class="drawer-section">
+          <h2>Benchmarks</h2>
+          <p class="muted small">
+            Mesure SynapseMem contre la baseline sur CrossCodeEval (NeurIPS
+            2023). Le run est streamé dans le chat et le scoreboard est
+            persisté entre redémarrages.
+          </p>
+          <form id="bench-form">
+            <label class="muted" for="bench-model">Modèle</label>
+            <select id="bench-model"></select>
+            <label class="muted" for="bench-limit">N samples</label>
+            <input
+              type="number"
+              id="bench-limit"
+              min="1"
+              max="2000"
+              value="20"
+            />
+            <label class="muted" for="bench-mode">Mode</label>
+            <select id="bench-mode">
+              <option value="both" selected>both (baseline + synapse)</option>
+              <option value="baseline">baseline</option>
+              <option value="synapse">synapse</option>
+            </select>
+            <button type="submit" id="bench-submit">Lancer</button>
+            <p id="bench-status" class="muted"></p>
+          </form>
+          <details open>
+            <summary>Scoreboard</summary>
+            <table id="bench-scoreboard" class="scoreboard">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Modèle</th>
+                  <th>N</th>
+                  <th>Mode</th>
+                  <th>EM</th>
+                  <th>ES</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </details>
+        </div>
+
+        <div class="drawer-section">
           <h2>Promesses ouvertes</h2>
           <ul id="promises" class="muted small"></ul>
         </div>

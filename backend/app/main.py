@@ -11,6 +11,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__
+from .api import bench as bench_routes
 from .api import chat as chat_routes
 from .api import generate as generate_routes
 from .api import ingest as ingest_routes
@@ -61,6 +62,7 @@ app.include_router(ingest_routes.router)
 app.include_router(query_routes.router)
 app.include_router(chat_routes.router)
 app.include_router(generate_routes.router)
+app.include_router(bench_routes.router)
 
 
 if STATIC_DIR.exists():

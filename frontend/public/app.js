@@ -619,12 +619,179 @@ function bindGenerateForm() {
   });
 }
 
+// ---- Benchmarks ------------------------------------------------------
+function formatDate(ts) {
+  if (!ts) return "—";
+  const d = new Date(ts * 1000);
+  return d.toISOString().replace("T", " ").slice(0, 16);
+}
+
+function addScoreboardRun(run) {
+  const tbody = document.querySelector("#bench-scoreboard tbody");
+  if (!tbody) return;
+  const modes = Object.keys(run.summaries || {});
+  if (!modes.length) return;
+  for (const mode of modes) {
+    const s = run.summaries[mode] || {};
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td class="muted small">${formatDate(run.finished_at || run.started_at)}</td>
+      <td>${run.model || "—"}</td>
+      <td>${s.n ?? run.limit ?? "—"}</td>
+      <td>${mode}</td>
+      <td>${(s.em ?? 0).toFixed(3)}</td>
+      <td>${(s.es ?? 0).toFixed(3)}</td>
+    `;
+    tbody.prepend(tr);
+  }
+}
+
+async function refreshBenchScoreboard() {
+  try {
+    const runs = await fetchJSON("/bench/runs?limit=50");
+    const tbody = document.querySelector("#bench-scoreboard tbody");
+    if (!tbody) return;
+    tbody.innerHTML = "";
+    for (const run of runs.slice().reverse()) addScoreboardRun(run);
+  } catch (err) {
+    // scoreboard is best-effort
+  }
+}
+
+async function refreshBenchModels() {
+  const sel = document.getElementById("bench-model");
+  if (!sel) return;
+  sel.innerHTML = "";
+  try {
+    const data = await fetchJSON("/chat/models");
+    for (const name of data.models) {
+      const opt = document.createElement("option");
+      opt.value = name;
+      opt.textContent = name;
+      sel.appendChild(opt);
+    }
+    if (data.default && data.models.includes(data.default)) {
+      sel.value = data.default;
+    }
+  } catch (err) {
+    const opt = document.createElement("option");
+    opt.textContent = "Ollama unavailable";
+    opt.disabled = true;
+    sel.appendChild(opt);
+  }
+}
+
+function appendBenchEvent(evt) {
+  const box = document.getElementById("messages");
+  const div = document.createElement("div");
+  div.className = `event kind-bench-${evt.event || "raw"}`;
+  if (evt.event === "sample") {
+    const r = evt.result || {};
+    const mark = r.em ? "✓" : r.es > 0.5 ? "·" : "✗";
+    div.textContent =
+      `[bench ${evt.mode}] ${evt.done}/${evt.total} ${mark} ` +
+      `em=${Number(r.em)} es=${(r.es || 0).toFixed(2)} ` +
+      `elapsed=${(r.elapsed || 0).toFixed(1)}s task=${r.task_id}`;
+  } else if (evt.event === "summary") {
+    const s = evt.summary || {};
+    div.textContent =
+      `[bench ${evt.mode}] → EM=${(s.em || 0).toFixed(3)} ` +
+      `ES=${(s.es || 0).toFixed(3)} on ${s.n} samples`;
+    div.classList.add("bench-summary");
+  } else {
+    div.textContent = `[bench] ${JSON.stringify(evt)}`;
+  }
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+}
+
+function bindBenchForm() {
+  const form = document.getElementById("bench-form");
+  if (!form) return;
+  const statusEl = document.getElementById("bench-status");
+  const submitBtn = document.getElementById("bench-submit");
+  const modelSel = document.getElementById("bench-model");
+  const limitInput = document.getElementById("bench-limit");
+  const modeSel = document.getElementById("bench-mode");
+
+  const setBenchStatus = (msg, isError = false) => {
+    statusEl.textContent = msg;
+    statusEl.style.color = isError ? "#ff8a80" : "#7b8ba0";
+  };
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const model = modelSel.value;
+    const limit = Number(limitInput.value) || 20;
+    const mode = modeSel.value;
+    if (!model) {
+      setBenchStatus("Choisis un modèle d'abord.", true);
+      return;
+    }
+    submitBtn.disabled = true;
+    setBenchStatus(`Lancement (${mode}, ${limit} samples, ${model})…`);
+    appendMessage(
+      "user",
+      `[benchmark] CrossCodeEval · mode=${mode} · limit=${limit} · model=${model}`,
+      "bench",
+    );
+
+    try {
+      const r = await fetch("/bench/crosscodeeval/run", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ model, limit, mode }),
+      });
+      if (!r.ok) {
+        const text = await r.text();
+        setBenchStatus(`HTTP ${r.status}: ${text.slice(0, 200)}`, true);
+        return;
+      }
+      const reader = r.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        let idx;
+        while ((idx = buf.indexOf("\n")) !== -1) {
+          const line = buf.slice(0, idx);
+          buf = buf.slice(idx + 1);
+          if (!line.trim()) continue;
+          try {
+            const evt = JSON.parse(line);
+            appendBenchEvent(evt);
+            if (evt.event === "status" && evt.phase) {
+              setBenchStatus(`Phase: ${evt.phase}`);
+            }
+            if (evt.event === "run") {
+              addScoreboardRun(evt.run);
+              setBenchStatus("Terminé.");
+            }
+            if (evt.event === "error") {
+              setBenchStatus(`Erreur: ${evt.error}`, true);
+            }
+          } catch {}
+        }
+      }
+    } catch (err) {
+      setBenchStatus(`error: ${err.message}`, true);
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
+}
+
 bindChatForm();
 bindIngestForm();
 bindGenerateForm();
+bindBenchForm();
 bindDrawer();
 bindKeyboardTracking();
 refreshModels();
+refreshBenchModels();
+refreshBenchScoreboard();
 refreshProjects();
 // No more setInterval — projects list is refreshed on drawer open, on
 // ingest success, and when the user hits the Refresh button.
