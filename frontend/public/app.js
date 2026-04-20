@@ -5,6 +5,20 @@
  * with live streaming comes in a later milestone.
  */
 
+// Register the fcose layout plugin if the CDN script loaded it.
+// Falls back to the built-in `cose` layout otherwise so the graph still
+// renders (just a little less prettily) instead of blowing up.
+const LAYOUT_NAME = (() => {
+  try {
+    if (typeof cytoscapeFcose !== "undefined") {
+      cytoscape.use(cytoscapeFcose);
+      return "fcose";
+    }
+  } catch (_) {}
+  return "cose";
+})();
+const LAYOUT_OPTS = { name: LAYOUT_NAME, animate: false, nodeRepulsion: 4500 };
+
 const STYLE = [
   {
     selector: "node",
@@ -278,7 +292,7 @@ async function refreshGraph() {
         container: document.getElementById("graph"),
         elements,
         style: STYLE,
-        layout: { name: "fcose", animate: false, nodeRepulsion: 4500 },
+        layout: LAYOUT_OPTS,
         wheelSensitivity: 0.15,
       });
       cy.on("tap", "node", (e) => renderDetail(e.target.data()));
@@ -286,7 +300,7 @@ async function refreshGraph() {
     } else {
       cy.elements().remove();
       cy.add(elements);
-      cy.layout({ name: "fcose", animate: false, nodeRepulsion: 4500 }).run();
+      cy.layout(LAYOUT_OPTS).run();
     }
     renderPromises(promises);
     setStatus(
