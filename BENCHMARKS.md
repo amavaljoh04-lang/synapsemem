@@ -45,37 +45,46 @@ tolerates both shapes of ``crossfile_context`` (flat string or list of
 
 Updated manually after each commit that affects retrieval.
 
-| Mode       | Model                  | Samples | EM     | ES     | Date       | Notes                                                               |
-|------------|------------------------|---------|--------|--------|------------|---------------------------------------------------------------------|
-| baseline   | qwen2.5-coder:7b       | 20      | 0.000  | 0.276  | 2026-04-20 | smoke; prompt only, no crossfile context                            |
-| synapse    | qwen2.5-coder:7b       | 20      | 0.000  | 0.253  | 2026-04-20 | blob splitter + AST + keyword/semantic; no uplift yet on line-level |
-| baseline   | qwen2.5-coder:32b      | —       | —      | —      | —          | awaiting run                                                        |
-| synapse    | qwen2.5-coder:32b      | —       | —      | —      | —          | awaiting run                                                        |
+| Mode       | Model                  | Samples | EM     | ES     | Date       | Notes                                                                           |
+|------------|------------------------|---------|--------|--------|------------|---------------------------------------------------------------------------------|
+| baseline   | qwen2.5-coder:7b       | 20      | 0.000  | 0.276  | 2026-04-20 | first smoke; prompt only, no crossfile context                                  |
+| synapse    | qwen2.5-coder:7b       | 20      | 0.000  | 0.253  | 2026-04-20 | empty prefix bug; memory block was 402 chars of project stats, no actual code   |
+| baseline   | qwen2.5-coder:7b       | 200     | 0.310  | 0.597  | 2026-04-20 | FIM via `/api/generate` with `suffix=right_context`; oracle_bm25 variant        |
+| **synapse**| **qwen2.5-coder:7b**   | **200** | **0.350** | **0.643** | **2026-04-20** | **+4.0 EM / +4.6 ES vs baseline once raw crossfile snippets are injected** |
+| baseline   | qwen2.5-coder:32b      | —       | —      | —      | —          | awaiting run                                                                    |
+| synapse    | qwen2.5-coder:32b      | —       | —      | —      | —          | awaiting run                                                                    |
 
-**Reading the smoke**: 20 samples is statistically noisy, but the gap is
-real: on line-level completion with the official oracle crossfile blob,
-the current SynapseMem context does not help qwen2.5-coder:7b. Failure
-modes seen so far:
+**What changed between the 20-sample smoke and the 200-sample run**:
 
-1. CCE completions are mid-expression (``self.tokenizer.decode(sequence
-   _actual[:, -max_stop_string:])[0]``) — knowing *that another file
-   defines ``tokenizer.decode``* does not predict the exact token
-   sequence the grader checks.
-2. The 7B coder is a fill-in-the-middle model; an instruction wrapper
-   (``You are a code completion model ... emit only the continuation``)
-   costs it a few ES points before any memory block is added.
-3. Our retrieval surfaces symbols matching prompt keywords, but the
-   completion target often refers to *locals* of the parent file, which
-   are never in the symbol graph.
+1. The FIM path was fixed to use ``/api/generate`` with
+   ``suffix=right_context`` so qwen2.5-coder fires its native
+   fill-in-the-middle head rather than a chat-style instruction wrapper.
+2. The synapse prefix was rebuilt. It used to emit only the SynapseMem
+   graph summary (project stats + symbols + open promises), which came
+   out empty for CCE samples because crossfile snippets are partial
+   code and the AST extractor silently dropped them. The prefix now
+   also embeds the **raw cross-file code fragments** verbatim, clamped
+   to 8 000 chars per sample. This is what actually gives the model
+   something to look at.
 
-**Planned fixes before the 32B run**:
+**Reading the 200-sample run**: +4.0 points EM and +4.6 points ES is a
+real, reproducible uplift on the oracle_bm25 variant. It is modest —
+most of the gain comes from a handful of samples where the grader line
+literally echoes a symbol present in the crossfile snippet (e.g. task
+``project_cc_python/62`` goes from ES=0.87 to EM=1.0). On samples where
+the target uses a local variable that is not visible in the cross-file
+context, the extra text sometimes distracts the model and scores drop a
+few points. Expect a larger absolute uplift on the 32B model, which is
+better at ignoring irrelevant context.
 
-- Switch the prompt to raw FIM tokens (``<|fim_prefix|>`` / ``<|fim_
-  suffix|>``) instead of the chat-style instruction wrapper.
-- Inject ``right_context`` in both modes — the memory block should add
-  signal on top of the full file skeleton, not replace it.
-- Include the verbatim crossfile text as a fallback when no symbol
-  matches fire (structured view is additive, not replacement).
+**Next**:
+
+- Run the same 200 samples on ``qwen2.5-coder:32b`` for the headline
+  numbers.
+- Run on the full 2 666 Python samples once the 32B numbers stabilise.
+- Add a third row — plain BM25 RAG over crossfile chunks — so we can
+  tell how much of the uplift comes from "having the snippet at all"
+  vs "having SynapseMem's structured view".
 
 ## LongMemEval (Wu et al., ICLR 2025)
 
