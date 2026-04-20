@@ -234,6 +234,11 @@ _MEMORY_HEADER = (
     "# consistent with the rest of the project.\n"
 )
 
+# Hard cap on cross-file snippet bytes injected per sample so we don't
+# blow through the LLM's context window on large repos. Empirical choice:
+# qwen2.5-coder handles ~16k tokens comfortably; 8000 chars ≈ 2k tokens.
+_MAX_SNIPPET_CHARS = 8000
+
 
 async def _build_temp_session() -> tuple[AsyncSession, object]:
     """Isolated in-memory SQLite session for one harness run."""
@@ -257,14 +262,54 @@ class RunnerConfig:
     num_predict: int = 128
 
 
+def _format_snippets_block(files: list[tuple[str, str]]) -> str:
+    """Inject raw cross-file code snippets as comment-prefixed blocks.
+
+    CrossCodeEval's crossfile_context is often a set of code fragments
+    (partial method bodies, not parseable modules). AST-based symbol
+    extraction misses them, so we fall back to embedding the raw
+    bodies. The model reads them as comments because of the ``# ``
+    prefix and treats them as reference context rather than code to
+    continue.
+    """
+    if not files:
+        return ""
+    lines = ["# ## Cross-file code fragments"]
+    budget = _MAX_SNIPPET_CHARS
+    for path, content in files:
+        if budget <= 0:
+            break
+        trimmed = content[:budget]
+        budget -= len(trimmed)
+        lines.append(f"# ### {path}")
+        for raw in trimmed.splitlines():
+            if raw:
+                lines.append(f"# {raw}")
+            else:
+                lines.append("#")
+        lines.append("#")
+    return "\n".join(lines)
+
+
 async def _build_memory_prefix(sample: CCESample) -> str:
     """Ingest crossfile files, then assemble SynapseMem's memory block.
 
-    Returns a comment-prefixed string ready to be prepended to the
-    target file. Keeping it comment-prefixed means even a pure FIM
-    model reads it as comments rather than as code to continue.
+    Two sources of context are fused:
+
+    1. Graph-derived summary from the SynapseMem ingestion (project
+       stats + open promises + relevant symbols via semantic /
+       keyword retrieval) — useful when crossfile files are full,
+       parseable Python modules.
+    2. Raw code fragments from ``crossfile_context`` — the primary
+       signal when the snippets are partial (common on CCE oracle
+       variants). Without this the synapse prefix would collapse to
+       empty whenever the AST extractor rejects a fragment.
+
+    Output is comment-prefixed so even a pure FIM model reads it as
+    reference material and not as code to continue.
     """
     session, engine = await _build_temp_session()
+    mem_block = ""
     try:
         project_id = f"cce-{sample.task_id.replace('/', '-')}"
         for idx, (path, content) in enumerate(sample.crossfile_files or []):
@@ -286,10 +331,20 @@ async def _build_memory_prefix(sample: CCESample) -> str:
     finally:
         await session.close()
         await engine.dispose()
-    if not mem_block.strip():
+
+    snippets_block = _format_snippets_block(sample.crossfile_files or [])
+    if not mem_block.strip() and not snippets_block:
         return ""
-    commented = "\n".join(f"# {line}" if line else "#" for line in mem_block.splitlines())
-    return _MEMORY_HEADER + commented + "\n# --- end memory ---\n\n"
+
+    sections: list[str] = []
+    if mem_block.strip():
+        sections.append(
+            "\n".join(f"# {line}" if line else "#" for line in mem_block.splitlines())
+        )
+    if snippets_block:
+        sections.append(snippets_block)
+    body = "\n".join(sections)
+    return _MEMORY_HEADER + body + "\n# --- end memory ---\n\n"
 
 
 async def run_sample(sample: CCESample, cfg: RunnerConfig) -> dict:
