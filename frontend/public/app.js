@@ -705,6 +705,68 @@ function appendBenchEvent(evt) {
   box.scrollTop = box.scrollHeight;
 }
 
+// Single source of truth for the "a bench is currently playing in the
+// chat" state, shared between the form handler and the on-page-load
+// auto-reattach path. Ensures we never spawn two concurrent stream
+// readers against the same run id.
+const _benchState = {
+  reading: false,
+  runId: null,
+  submitBtn: null,
+  statusSetter: null,
+};
+
+async function _consumeBenchStream(runId, { onStatus, onDone } = {}) {
+  if (_benchState.reading && _benchState.runId === runId) return;
+  _benchState.reading = true;
+  _benchState.runId = runId;
+  try {
+    const r = await fetch(`/bench/live/${runId}/stream`);
+    if (!r.ok) {
+      onStatus?.(`HTTP ${r.status}`, true);
+      return;
+    }
+    const reader = r.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      let idx;
+      while ((idx = buf.indexOf("\n")) !== -1) {
+        const line = buf.slice(0, idx);
+        buf = buf.slice(idx + 1);
+        if (!line.trim()) continue;
+        let evt;
+        try {
+          evt = JSON.parse(line);
+        } catch {
+          continue;
+        }
+        if (evt.event === "closed") break;
+        appendBenchEvent(evt);
+        if (evt.event === "status" && evt.phase) {
+          onStatus?.(`Phase: ${evt.phase}`);
+        }
+        if (evt.event === "run") {
+          addScoreboardRun(evt.run);
+          onStatus?.("Terminé.");
+        }
+        if (evt.event === "error") {
+          onStatus?.(`Erreur: ${evt.error}`, true);
+        }
+      }
+    }
+  } catch (err) {
+    onStatus?.(`error: ${err.message}`, true);
+  } finally {
+    _benchState.reading = false;
+    _benchState.runId = null;
+    onDone?.();
+  }
+}
+
 function bindBenchForm() {
   const form = document.getElementById("bench-form");
   if (!form) return;
@@ -718,6 +780,8 @@ function bindBenchForm() {
     statusEl.textContent = msg;
     statusEl.style.color = isError ? "#ff8a80" : "#7b8ba0";
   };
+  _benchState.submitBtn = submitBtn;
+  _benchState.statusSetter = setBenchStatus;
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -736,6 +800,7 @@ function bindBenchForm() {
       "bench",
     );
 
+    let runId;
     try {
       const r = await fetch("/bench/crosscodeeval/run", {
         method: "POST",
@@ -745,42 +810,53 @@ function bindBenchForm() {
       if (!r.ok) {
         const text = await r.text();
         setBenchStatus(`HTTP ${r.status}: ${text.slice(0, 200)}`, true);
+        submitBtn.disabled = false;
         return;
       }
-      const reader = r.body.getReader();
-      const decoder = new TextDecoder();
-      let buf = "";
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
-        let idx;
-        while ((idx = buf.indexOf("\n")) !== -1) {
-          const line = buf.slice(0, idx);
-          buf = buf.slice(idx + 1);
-          if (!line.trim()) continue;
-          try {
-            const evt = JSON.parse(line);
-            appendBenchEvent(evt);
-            if (evt.event === "status" && evt.phase) {
-              setBenchStatus(`Phase: ${evt.phase}`);
-            }
-            if (evt.event === "run") {
-              addScoreboardRun(evt.run);
-              setBenchStatus("Terminé.");
-            }
-            if (evt.event === "error") {
-              setBenchStatus(`Erreur: ${evt.error}`, true);
-            }
-          } catch {}
-        }
-      }
+      const payload = await r.json();
+      runId = payload.run_id;
     } catch (err) {
       setBenchStatus(`error: ${err.message}`, true);
-    } finally {
       submitBtn.disabled = false;
+      return;
     }
+    await _consumeBenchStream(runId, {
+      onStatus: setBenchStatus,
+      onDone: () => {
+        submitBtn.disabled = false;
+      },
+    });
   });
+}
+
+// On page load — if a run is in progress (e.g. a 32B full dataset
+// launched earlier), reattach to its event stream so the chat shows
+// live progress instead of silence.
+async function reattachActiveBench() {
+  try {
+    const res = await fetchJSON("/bench/live");
+    const active = res?.active;
+    if (!active?.id) return;
+    const submitBtn = _benchState.submitBtn;
+    const setStatus = _benchState.statusSetter;
+    if (submitBtn) submitBtn.disabled = true;
+    setStatus?.(
+      `Run en cours (${active.mode}, ${active.limit} samples, ${active.model}). Reprise du flux…`,
+    );
+    appendMessage(
+      "system",
+      `[benchmark] reprise du run ${active.id} — ${active.mode} / ${active.limit} samples / ${active.model}`,
+      "bench",
+    );
+    await _consumeBenchStream(active.id, {
+      onStatus: setStatus,
+      onDone: () => {
+        if (submitBtn) submitBtn.disabled = false;
+      },
+    });
+  } catch (_err) {
+    // No active run, or endpoint not reachable — silent.
+  }
 }
 
 bindChatForm();
@@ -793,6 +869,7 @@ refreshModels();
 refreshBenchModels();
 refreshBenchScoreboard();
 refreshProjects();
+reattachActiveBench();
 // No more setInterval — projects list is refreshed on drawer open, on
 // ingest success, and when the user hits the Refresh button.
 document
