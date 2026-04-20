@@ -82,6 +82,14 @@ def _extract_crossfile_files(raw) -> list[tuple[str, str]]:
         return []
     if isinstance(raw, str):
         return [("crossfile.txt", raw)]
+    if isinstance(raw, dict):
+        # Official release ships ``{"text": "# Here are some relevant
+        # code fragments ..."}`` — a flat blob that already contains
+        # the other files annotated with ``# file.py\n# ...`` headers.
+        text = raw.get("text") or raw.get("content") or ""
+        if text:
+            return [("crossfile.txt", text)]
+        return []
     if not isinstance(raw, list):
         return []
     out: list[tuple[str, str]] = []
@@ -103,17 +111,23 @@ def load_samples(dataset_path: Path, *, limit: int | None = None) -> list[CCESam
             if not line.strip():
                 continue
             row = json.loads(line)
+            meta = row.get("metadata") or {}
             s = CCESample(
-                task_id=str(row.get("task_id") or row.get("id") or len(samples)),
-                language=row.get("language", "python"),
+                task_id=str(
+                    row.get("task_id")
+                    or meta.get("task_id")
+                    or row.get("id")
+                    or len(samples)
+                ),
+                language=row.get("language") or meta.get("language") or "python",
                 prompt=row["prompt"],
                 groundtruth=row.get("groundtruth") or row.get("completion") or "",
                 right_context=row.get("right_context", ""),
                 crossfile_files=_extract_crossfile_files(
                     row.get("crossfile_context") or row.get("cross_file_context")
                 ),
-                repository=row.get("repository", ""),
-                file_path=row.get("file_path", ""),
+                repository=row.get("repository") or meta.get("repository", ""),
+                file_path=row.get("file_path") or meta.get("file", ""),
             )
             samples.append(s)
             if limit is not None and len(samples) >= limit:
