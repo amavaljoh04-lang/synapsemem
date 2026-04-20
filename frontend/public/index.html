@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>SynapseMem — Live Graph</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <link rel="stylesheet" href="/static/style.css" />
+    <script src="https://unpkg.com/cytoscape@3.30.4/dist/cytoscape.min.js"></script>
+    <script src="https://unpkg.com/cytoscape-fcose@2.2.0/cytoscape-fcose.js"></script>
+  </head>
+  <body>
+    <header>
+      <h1>SynapseMem</h1>
+      <nav>
+        <label for="project">Project</label>
+        <select id="project"></select>
+        <button id="refresh">Refresh</button>
+        <span id="status" class="muted"></span>
+      </nav>
+    </header>
+    <main>
+      <section id="graph"></section>
+      <aside id="panel">
+        <h2>Inspector</h2>
+        <p class="muted">Click a node to see its details here.</p>
+        <pre id="detail"></pre>
+        <hr />
+        <h2>Open promises</h2>
+        <ul id="promises" class="muted"></ul>
+      </aside>
+    </main>
+    <script src="/static/app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,15 @@
+services:
+  synapsemem:
+    build: .
+    container_name: synapsemem
+    restart: unless-stopped
+    ports:
+      - "8100:8100"
+    volumes:
+      - ./data:/app/data
+    environment:
+      SYNAPSEMEM_OLLAMA_BASE_URL: ${SYNAPSEMEM_OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      SYNAPSEMEM_EXTRACTOR_MODEL: ${SYNAPSEMEM_EXTRACTOR_MODEL:-qwen2.5-coder:32b}
+      SYNAPSEMEM_EMBEDDINGS_MODEL: ${SYNAPSEMEM_EMBEDDINGS_MODEL:-nomic-embed-text}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
