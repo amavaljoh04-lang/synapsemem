@@ -78,10 +78,8 @@ async def ensure_symbols_embedded(
     of an embedding failure.
     """
     model = model or settings.embeddings_model
-    close_client = False
     if client is None:
         client = OllamaClient(str(settings.ollama_base_url))
-        close_client = True
 
     rows = (
         await session.execute(
@@ -105,44 +103,40 @@ async def ensure_symbols_embedded(
     existing = {e.symbol_id: e for e in existing_rows}
 
     computed = 0
-    try:
-        for sym, path in rows:
-            text = _symbol_text(sym, path)
-            digest = _content_hash(text)
-            prev = existing.get(sym.id)
-            if prev and prev.model == model and prev.content_hash == digest:
-                continue  # still valid
-            try:
-                vec = await client.embed(model=model, text=text)
-            except OllamaError:
-                # Abort the whole backfill — the caller will get what we
-                # managed to embed so far and can retry later.
-                break
-            if not vec:
-                continue
-            blob = _pack(vec)
-            if prev is None:
-                session.add(
-                    models.SymbolEmbedding(
-                        symbol_id=sym.id,
-                        project_id=project_id,
-                        model=model,
-                        dim=len(vec),
-                        vector=blob,
-                        content_hash=digest,
-                    )
+    for sym, path in rows:
+        text = _symbol_text(sym, path)
+        digest = _content_hash(text)
+        prev = existing.get(sym.id)
+        if prev and prev.model == model and prev.content_hash == digest:
+            continue  # still valid
+        try:
+            vec = await client.embed(model=model, text=text)
+        except OllamaError:
+            # Abort the whole backfill — the caller will get what we
+            # managed to embed so far and can retry later.
+            break
+        if not vec:
+            continue
+        blob = _pack(vec)
+        if prev is None:
+            session.add(
+                models.SymbolEmbedding(
+                    symbol_id=sym.id,
+                    project_id=project_id,
+                    model=model,
+                    dim=len(vec),
+                    vector=blob,
+                    content_hash=digest,
                 )
-            else:
-                prev.model = model
-                prev.dim = len(vec)
-                prev.vector = blob
-                prev.content_hash = digest
-            computed += 1
-            if computed % _BACKFILL_BATCH == 0:
-                await session.flush()
-    finally:
-        if close_client:
-            await client.aclose()
+            )
+        else:
+            prev.model = model
+            prev.dim = len(vec)
+            prev.vector = blob
+            prev.content_hash = digest
+        computed += 1
+        if computed % _BACKFILL_BATCH == 0:
+            await session.flush()
     if computed:
         await session.commit()
     return computed
@@ -186,22 +180,13 @@ async def semantic_symbol_search(
     the keyword-based retrieval rather than rely on semantic alone.
     """
     model = model or settings.embeddings_model
-    close_client = False
     if client is None:
         client = OllamaClient(str(settings.ollama_base_url))
-        close_client = True
     try:
-        try:
-            q_vec = await client.embed(model=model, text=query)
-        except OllamaError:
-            return []
-    finally:
-        if close_client and client is not None:
-            # leave open if we actually need it for more calls below
-            pass
+        q_vec = await client.embed(model=model, text=query)
+    except OllamaError:
+        return []
     if not q_vec:
-        if close_client:
-            await client.aclose()
         return []
 
     rows = (
@@ -212,8 +197,6 @@ async def semantic_symbol_search(
             .where(models.SymbolEmbedding.project_id == project_id)
         )
     ).all()
-    if close_client:
-        await client.aclose()
 
     scored: list[SemanticHit] = []
     for emb, sym, path in rows:
